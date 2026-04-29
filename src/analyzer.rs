@@ -17,9 +17,9 @@ static SCRIPT_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
 const SUPPORTED_EXTENSIONS: [&str; 3] = [".unity", ".prefab", ".asset"];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct ScriptReference {
-    file_path: PathBuf,
-    line_number: u32,
+pub struct ScriptReference {
+    pub file_path: PathBuf,
+    pub line_number: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -42,7 +42,6 @@ impl Analyzer {
     /// Returns asset references where this script is used in scenes, prefabs, and assets.
     pub fn analyze_script(&self, content: &str, script_path: &Path) -> AnalysisResult {
         let mut asset_references = Vec::new();
-
         let meta_path = script_path.with_added_extension("meta");
 
         if let Some(guid) = self.extract_guid_from_meta(&meta_path) {

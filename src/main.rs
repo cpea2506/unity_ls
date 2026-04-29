@@ -10,18 +10,17 @@ use lsp_types::{
     DidCloseTextDocumentParams, DidOpenTextDocumentParams, InitializeParams, PositionEncodingKind,
     ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
 };
+use std::path::PathBuf;
 use std::{error::Error, result::Result};
 use tracing::{error, info};
-use url::Url;
 
 mod analyzer;
-mod asset_detector;
 mod codelens;
 mod document_storage;
 
 use document_storage::DocumentStorage;
 
-use crate::analyzer::UnityAnalyzer;
+use crate::analyzer::Analyzer;
 
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     tracing_subscriber::fmt()
@@ -60,7 +59,7 @@ fn main_loop(
     let params = serde_json::from_value::<InitializeParams>(params)?;
 
     let mut docs = DocumentStorage::new();
-    let analyzer = UnityAnalyzer::new(params.workspace_folders.unwrap()[0].uri.clone());
+    let analyzer = Analyzer::new(params.workspace_folders.unwrap()[0].uri.clone());
 
     info!("Unity LS Analyzer {:?}", analyzer);
 
@@ -93,18 +92,19 @@ fn handle_request(
     conn: &Connection,
     req: &Request,
     docs: &mut DocumentStorage,
-    analyzer: &UnityAnalyzer,
+    analyzer: &Analyzer,
 ) -> Result<(), Box<dyn Error>> {
     match req.method.as_str() {
         CodeLensRequest::METHOD => {
             let p = serde_json::from_value::<CodeLensParams>(req.params.clone())?;
             let uri = p.text_document.uri;
-            let content = docs.get(uri.clone()).unwrap();
-            let script_path = Url::parse(uri.as_str())?.to_file_path().unwrap();
-            let analysis = analyzer.analyze_script(content, &script_path);
-            let codelens = codelens::create_codelens(analysis, uri)?;
 
-            send_ok(conn, req.id.clone(), &codelens)?;
+            if let Some(content) = docs.get(&uri) {
+                let analysis = analyzer.analyze_script(&content, &PathBuf::from(uri.as_str()));
+                let codelens = codelens::create_codelens(analysis)?;
+
+                send_ok(conn, req.id.clone(), &codelens)?;
+            }
         }
         CodeLensResolve::METHOD => {
             let lens = serde_json::from_value::<CodeLens>(req.params.clone())?;
@@ -130,21 +130,20 @@ fn handle_notification(
 ) -> Result<(), Box<dyn Error>> {
     match noti.method.as_str() {
         DidOpenTextDocument::METHOD => {
-            let p = serde_json::from_value::<DidOpenTextDocumentParams>(noti.params.clone())?;
-            let uri = p.text_document.uri;
-            docs.open(uri.clone(), p.text_document.text);
+            let params = serde_json::from_value::<DidOpenTextDocumentParams>(noti.params.clone())?;
+            docs.open(params.text_document.uri.clone(), params.text_document.text);
         }
         DidChangeTextDocument::METHOD => {
-            let p = serde_json::from_value::<DidChangeTextDocumentParams>(noti.params.clone())?;
-            if let Some(change) = p.content_changes.into_iter().next() {
-                let uri = p.text_document.uri;
-                docs.change(uri.clone(), change.text);
+            let params =
+                serde_json::from_value::<DidChangeTextDocumentParams>(noti.params.clone())?;
+
+            if let Some(change) = params.content_changes.into_iter().next() {
+                docs.change(&params.text_document.uri, change.text);
             }
         }
         DidCloseTextDocument::METHOD => {
-            let p = serde_json::from_value::<DidCloseTextDocumentParams>(noti.params.clone())?;
-            let uri = p.text_document.uri;
-            docs.close(uri.clone());
+            let params = serde_json::from_value::<DidCloseTextDocumentParams>(noti.params.clone())?;
+            docs.close(&params.text_document.uri);
         }
         _ => {}
     }
