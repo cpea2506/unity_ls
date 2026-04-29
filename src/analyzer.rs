@@ -8,6 +8,7 @@ use std::{
     path::{Path, PathBuf},
     sync::LazyLock,
 };
+use tracing::info;
 use walkdir::WalkDir;
 
 static SCRIPT_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
@@ -29,47 +30,42 @@ pub struct AnalysisResult {
 }
 
 #[derive(Debug)]
-pub struct Analyzer {
-    workspace_root: Uri,
+pub struct Analyzer<'a> {
+    workspace_root: &'a Uri,
 }
 
-impl Analyzer {
-    pub fn new(workspace_root: Uri) -> Self {
+impl<'a> Analyzer<'a> {
+    pub fn new(workspace_root: &'a Uri) -> Self {
         Analyzer { workspace_root }
     }
 
     /// Analyze a C# script file for Unity asset references.
     /// Returns asset references where this script is used in scenes, prefabs, and assets.
     pub fn analyze_script(&self, content: &str, script_path: &Path) -> AnalysisResult {
-        let mut asset_references = Vec::new();
         let meta_path = script_path.with_added_extension("meta");
 
-        if let Some(guid) = self.extract_guid_from_meta(&meta_path) {
-            asset_references = self.find_asset_references(&guid);
-        }
-
-        let class_line = self.find_class_line(content);
+        let asset_references = Self::extract_guid_from_meta(&meta_path)
+            .map(|guid| self.find_asset_references(&guid))
+            .unwrap_or_default();
 
         AnalysisResult {
             asset_references,
-            class_line,
+            class_line: self.get_class_line(content),
         }
     }
 
-    fn find_class_line(&self, content: &str) -> Option<u32> {
+    fn get_class_line(&self, content: &str) -> Option<u32> {
         let regex = Regex::new(r"^\s*(?:public|private|internal|protected)?\s*class\b").unwrap();
 
-        for (line_num, line) in content.lines().enumerate() {
-            if regex.is_match(line) {
-                return Some(line_num as u32);
-            }
-        }
-
-        None
+        content
+            .lines()
+            .enumerate()
+            .find(|(_, l)| regex.is_match(l))
+            .map(|(lnum, _)| lnum as u32)
     }
 
     /// Extract GUID from a .meta file.
-    fn extract_guid_from_meta(&self, meta_path: &Path) -> Option<String> {
+    fn extract_guid_from_meta(meta_path: &Path) -> Option<String> {
         if !meta_path.exists() {
             return None;
         }
@@ -85,6 +81,8 @@ impl Analyzer {
                     && k == "guid"
                     && let Some(guid) = value.as_str()
                 {
+                    info!("We got a guid {guid}");
+
                     return Some(guid.to_string());
                 }
             }
