@@ -41,7 +41,7 @@ impl<'a> RequestHandle for UnityRequest<'a> {
                 let uri = params.text_document.uri;
 
                 let codelens = if let Some(content) = self.docs.get(&uri) {
-                    let analysis = self.analyzer.analyze_script(&content, uri);
+                    let analysis = self.analyzer.analyze_script(content, uri);
                     code_lens::create_codelens(analysis)?
                 } else {
                     Vec::new()
