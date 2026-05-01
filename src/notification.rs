@@ -1,11 +1,9 @@
 use crate::document_storage::DocumentStorage;
-use lsp_server::Notification;
-use lsp_types::{
+use gen_lsp_types::{
     DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    notification::{
-        DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument, Notification as _,
-    },
+    LspNotificationMethod, TextDocumentContentChangeEvent,
 };
+use lsp_server::Notification;
 use std::error::Error;
 
 pub trait NotificationHandle {
@@ -25,27 +23,31 @@ impl<'a> UnityNotification<'a> {
 
 impl<'a> NotificationHandle for UnityNotification<'a> {
     fn handle(&mut self) -> Result<(), Box<dyn Error>> {
-        match self.notification.method.as_str() {
-            DidOpenTextDocument::METHOD => {
-                let params = serde_json::from_value::<DidOpenTextDocumentParams>(
-                    self.notification.params.clone(),
-                )?;
-                self.docs
-                    .open(params.text_document.uri.clone(), params.text_document.text);
-            }
-            DidChangeTextDocument::METHOD => {
-                let params = serde_json::from_value::<DidChangeTextDocumentParams>(
-                    self.notification.params.clone(),
-                )?;
+        let params = self.notification.params.clone();
 
-                if let Some(change) = params.content_changes.into_iter().next() {
-                    self.docs.change(&params.text_document.uri, change.text);
+        match LspNotificationMethod::from(self.notification.method.clone()) {
+            LspNotificationMethod::TextDocumentDidOpen => {
+                let params = serde_json::from_value::<DidOpenTextDocumentParams>(params)?;
+
+                self.docs
+                    .open(params.text_document.uri, params.text_document.text);
+            }
+            LspNotificationMethod::TextDocumentDidChange => {
+                let params = serde_json::from_value::<DidChangeTextDocumentParams>(params)?;
+
+                if let Some(
+                    TextDocumentContentChangeEvent::TextDocumentContentChangeWholeDocument(change),
+                ) = params.content_changes.into_iter().next()
+                {
+                    self.docs.change(
+                        params.text_document.text_document_identifier.uri,
+                        change.text,
+                    );
                 }
             }
-            DidCloseTextDocument::METHOD => {
-                let params = serde_json::from_value::<DidCloseTextDocumentParams>(
-                    self.notification.params.clone(),
-                )?;
+            LspNotificationMethod::TextDocumentDidClose => {
+                let params = serde_json::from_value::<DidCloseTextDocumentParams>(params)?;
+
                 self.docs.close(&params.text_document.uri);
             }
             _ => {}

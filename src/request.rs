@@ -1,13 +1,8 @@
-use crate::analyzer::Analyzer;
-use crate::codelens;
 use crate::document_storage::DocumentStorage;
+use crate::{analyzer::Analyzer, capabilities::code_lens};
+use gen_lsp_types::{CodeLens, CodeLensParams, LspRequestMethod};
 use lsp_server::{Connection, ErrorCode, Message, Request, RequestId, Response, ResponseError};
-use lsp_types::request::Request as _;
-use lsp_types::{
-    CodeLens, CodeLensParams,
-    request::{CodeLensRequest, CodeLensResolve},
-};
-use std::{error::Error, path::PathBuf};
+use std::error::Error;
 
 pub trait RequestHandle {
     fn handle(&self) -> Result<(), Box<dyn Error>>;
@@ -17,7 +12,7 @@ pub struct UnityRequest<'a> {
     connection: &'a Connection,
     request: &'a Request,
     docs: &'a DocumentStorage,
-    analyzer: &'a Analyzer<'a>,
+    analyzer: &'a Analyzer,
 }
 
 impl<'a> UnityRequest<'a> {
@@ -38,25 +33,25 @@ impl<'a> UnityRequest<'a> {
 
 impl<'a> RequestHandle for UnityRequest<'a> {
     fn handle(&self) -> Result<(), Box<dyn Error>> {
-        match self.request.method.as_str() {
-            CodeLensRequest::METHOD => {
-                let p = serde_json::from_value::<CodeLensParams>(self.request.params.clone())?;
-                let uri = p.text_document.uri;
+        let params = self.request.params.clone();
+
+        match LspRequestMethod::from(self.request.method.clone()) {
+            LspRequestMethod::TextDocumentCodeLens => {
+                let params = serde_json::from_value::<CodeLensParams>(params)?;
+                let uri = params.text_document.uri;
 
                 if let Some(content) = self.docs.get(&uri) {
-                    let analysis = self
-                        .analyzer
-                        .analyze_script(&content, &PathBuf::from(uri.as_str()));
-                    let codelens = codelens::create_codelens(analysis)?;
+                    let analysis = self.analyzer.analyze_script(&content, uri);
+                    let codelens = code_lens::create_codelens(analysis)?;
 
                     send_ok(self.connection, self.request.id.clone(), &codelens)?;
                 }
             }
-            CodeLensResolve::METHOD => {
-                let lens = serde_json::from_value::<CodeLens>(self.request.params.clone())?;
-                let lens = codelens::resolve_codelens(lens)?;
+            LspRequestMethod::CodeLensResolve => {
+                let mut codelens = serde_json::from_value::<CodeLens>(params)?;
+                codelens = code_lens::resolve_codelens(codelens)?;
 
-                send_ok(self.connection, self.request.id.clone(), &lens)?;
+                send_ok(self.connection, self.request.id.clone(), &codelens)?;
             }
             _ => send_err(
                 self.connection,

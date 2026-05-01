@@ -1,5 +1,5 @@
 use crate::analyzer::{AnalysisResult, ScriptReference};
-use lsp_types::{CodeLens, Command, Location, Position, Range, Uri};
+use gen_lsp_types::{CodeLens, Command, Location, Position, Range, Uri};
 use serde_json::json;
 use std::{error::Error, str::FromStr};
 
@@ -52,6 +52,7 @@ pub fn resolve_codelens(mut lens: CodeLens) -> Result<CodeLens, Box<dyn Error>> 
         title,
         command: "showUnityReferences".to_string(),
         arguments: Some(vec![json!(locations)]),
+        ..Default::default()
     });
 
     Ok(lens)

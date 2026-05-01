@@ -1,4 +1,4 @@
-use lsp_types::Uri;
+use gen_lsp_types::Uri;
 use regex::Regex;
 use saphyr::{LoadableYamlNode, Yaml};
 use serde::{Deserialize, Serialize};
@@ -8,7 +8,6 @@ use std::{
     path::{Path, PathBuf},
     sync::LazyLock,
 };
-use tracing::info;
 use walkdir::WalkDir;
 
 static SCRIPT_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
@@ -30,19 +29,26 @@ pub struct AnalysisResult {
 }
 
 #[derive(Debug)]
-pub struct Analyzer<'a> {
-    workspace_root: &'a Uri,
+pub struct Analyzer {
+    assets_folder: PathBuf,
 }
 
-impl<'a> Analyzer<'a> {
-    pub fn new(workspace_root: &'a Uri) -> Self {
-        Analyzer { workspace_root }
+impl Analyzer {
+    pub fn new(workspace_root: &Uri) -> Self {
+        let workspace_root = workspace_root.to_file_path().unwrap_or_default();
+
+        Analyzer {
+            assets_folder: workspace_root.join("Assets"),
+        }
     }
 
     /// Analyze a C# script file for Unity asset references.
     /// Returns asset references where this script is used in scenes, prefabs, and assets.
-    pub fn analyze_script(&self, content: &str, script_path: &Path) -> AnalysisResult {
-        let meta_path = script_path.with_added_extension("meta");
+    pub fn analyze_script(&self, content: &str, uri: Uri) -> AnalysisResult {
+        let meta_path = uri
+            .to_file_path()
+            .unwrap_or_default()
+            .with_added_extension("meta");
 
         let asset_references = Self::extract_guid_from_meta(&meta_path)
             .map(|guid| self.find_asset_references(&guid))
@@ -81,8 +87,6 @@ impl<'a> Analyzer<'a> {
                     && k == "guid"
                     && let Some(guid) = value.as_str()
                 {
-                    info!("We got a guid {guid}");
-
                     return Some(guid.to_string());
                 }
             }
@@ -94,9 +98,8 @@ impl<'a> Analyzer<'a> {
     /// Find all asset files that reference a script by GUID.
     fn find_asset_references(&self, script_guid: &str) -> Vec<ScriptReference> {
         let mut references = Vec::new();
-        let assets_path = PathBuf::from(self.workspace_root.as_str()).join("Assets");
 
-        for entry in WalkDir::new(&assets_path)
+        for entry in WalkDir::new(&self.assets_folder)
             .into_iter()
             .filter_map(|e| e.ok())
         {
