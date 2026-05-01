@@ -40,12 +40,14 @@ impl<'a> RequestHandle for UnityRequest<'a> {
                 let params = serde_json::from_value::<CodeLensParams>(params)?;
                 let uri = params.text_document.uri;
 
-                if let Some(content) = self.docs.get(&uri) {
+                let codelens = if let Some(content) = self.docs.get(&uri) {
                     let analysis = self.analyzer.analyze_script(&content, uri);
-                    let codelens = code_lens::create_codelens(analysis)?;
+                    code_lens::create_codelens(analysis)?
+                } else {
+                    Vec::new()
+                };
 
-                    send_ok(self.connection, self.request.id.clone(), &codelens)?;
-                }
+                send_ok(self.connection, self.request.id.clone(), &codelens)?;
             }
             LspRequestMethod::CodeLensResolve => {
                 let mut codelens = serde_json::from_value::<CodeLens>(params)?;
@@ -57,7 +59,7 @@ impl<'a> RequestHandle for UnityRequest<'a> {
                 self.connection,
                 self.request.id.clone(),
                 ErrorCode::MethodNotFound,
-                "unhandled method",
+                &format!("unhandled method: {}", self.request.method),
             )?,
         }
 
