@@ -1,7 +1,7 @@
 use crate::analyzer::{AnalysisResult, ScriptReference};
 use gen_lsp_types::{CodeLens, Command, Location, Position, Range, Uri};
 use serde_json::json;
-use std::{error::Error, str::FromStr};
+use std::error::Error;
 
 pub fn create_codelens(analysis: AnalysisResult) -> Result<Vec<CodeLens>, Box<dyn Error>> {
     let class_line = analysis.class_line.unwrap_or(0);
@@ -29,10 +29,10 @@ pub fn resolve_codelens(mut lens: CodeLens) -> Result<CodeLens, Box<dyn Error>> 
     let locations = asset_references
         .into_iter()
         .filter_map(|r| {
-            let uri = Uri::from_str(r.file_path.to_str()?).ok()?;
+            let uri = Uri::from_file_path(r.file_path).ok()?;
 
             Some(Location {
-                uri: uri.clone(),
+                uri,
                 range: Range {
                     start: Position::new(r.line_number, 0),
                     end: Position::new(r.line_number, 1),
