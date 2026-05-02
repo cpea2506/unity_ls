@@ -652,24 +652,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
-name = "unity_ls"
-version = "0.1.0"
-dependencies = [
- "fxhash",
- "gen-lsp-types",
- "lsp-server",
- "regex",
- "saphyr",
- "serde",
- "serde_json",
- "tracing",
- "tracing-subscriber",
- "tree-sitter",
- "tree-sitter-c-sharp",
- "walkdir",
-]
-
-[[package]]
 name = "url"
 version = "2.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -687,6 +669,24 @@ name = "utf8_iter"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
+
+[[package]]
+name = "utyrs"
+version = "0.1.0"
+dependencies = [
+ "fxhash",
+ "gen-lsp-types",
+ "lsp-server",
+ "regex",
+ "saphyr",
+ "serde",
+ "serde_json",
+ "tracing",
+ "tracing-subscriber",
+ "tree-sitter",
+ "tree-sitter-c-sharp",
+ "walkdir",
+]
 
 [[package]]
 name = "valuable"
