@@ -8,16 +8,12 @@ use std::{
     path::{Path, PathBuf},
     sync::LazyLock,
 };
+use tree_sitter::{Node, Parser};
 use walkdir::WalkDir;
 
 static SCRIPT_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"m_Script:\s*\{fileID:\s*\d+,\s*guid:\s*[a-f0-9]+,\s*type:\s*3\}")
         .expect("valid SCRIPT_PATTERN regex")
-});
-
-static CLASS_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^\s*(?:public|private|internal|protected)?\s*class\b")
-        .expect("valid CLASS_PATTERN regex")
 });
 
 const SUPPORTED_EXTENSIONS: [&str; 3] = [".unity", ".prefab", ".asset"];
@@ -50,7 +46,6 @@ impl Analyzer {
         }
     }
 
-    /// Analyze a C# script file for Unity asset references.
     pub fn analyze_script(&self, content: &str, uri: Uri) -> AnalysisResult {
         let meta_path = uri.to_file_path().ok().map(|p| p.with_extension("cs.meta"));
 
@@ -66,14 +61,36 @@ impl Analyzer {
     }
 
     fn get_class_line(content: &str) -> Option<u32> {
-        content
-            .lines()
-            .enumerate()
-            .find(|(_, line)| CLASS_PATTERN.is_match(line))
-            .map(|(idx, _)| idx as u32)
+        let mut parser = Parser::new();
+        let language = tree_sitter_c_sharp::LANGUAGE;
+        parser
+            .set_language(&language.into())
+            .expect("Error loading CSharp parser");
+
+        let tree = parser.parse(content, None)?;
+        let root = tree.root_node();
+
+        Self::find_class_node(root).map(|node| {
+            let row = node.start_position().row;
+            row as u32
+        })
     }
 
-    /// Extract GUID from a .meta file.
+    fn find_class_node(node: Node) -> Option<Node> {
+        if node.kind() == "class_declaration" {
+            return Some(node);
+        }
+
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if let Some(found) = Self::find_class_node(child) {
+                return Some(found);
+            }
+        }
+
+        None
+    }
+
     fn extract_guid_from_meta(meta_path: &Path) -> Option<String> {
         let content = fs::read_to_string(meta_path).ok()?;
         let docs = Yaml::load_from_str(&content).ok()?;
@@ -85,7 +102,6 @@ impl Analyzer {
             .map(str::to_owned)
     }
 
-    /// Find all asset files that reference a script by GUID.
     fn find_asset_references(&self, script_guid: &str) -> Vec<ScriptReference> {
         let mut references = Vec::new();
 
@@ -102,7 +118,6 @@ impl Analyzer {
             }
 
             if let Ok(content) = fs::read_to_string(entry.path()) {
-                // Find all lines that reference this script GUID.
                 for (line_number, line) in content.lines().enumerate() {
                     if SCRIPT_PATTERN.is_match(line) && line.contains(script_guid) {
                         references.push(ScriptReference {
